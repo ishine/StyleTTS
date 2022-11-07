@@ -1,0 +1,18 @@
+version: '3'
+services:
+  main:
+    build: dockerfiles
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - capabilities: [gpu]
+
+    ports:
+      - "8027:8888"
+      - "10041:22"
+    volumes:
+      - ./:/root/project
+      - /mnt/ssd:/mnt/ssd
+    shm_size: 32gb
+    tty: true
