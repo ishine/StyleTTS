@@ -1,43 +1,30 @@
-import math
 import torch
 from torch import nn
-import torch.nn.functionals as F
+import torch.nn.functional as F
+import math
 
-class CumsumAttentionDecoder(nn.Module):
-    def __init__(self, dim_emb=256,  dim_hidden=512, n_loc_filters=32, loc_kernel_size=64,
+class CumAttentionDecoder(nn.Module):
+    def __init__(self, dim_emb=256,  dim_hidden=512, n_loc_filters=32, loc_kernel_size=63,
                  n_tokens=49, input_channels=1):
         super().__init__()
         self.pad_token = 0
         self.sos_token = 1
         self.eos_token = 2
         self.unk_token = 3
+        self.random_mask = 0.1
         self.embedding = nn.Embedding(n_tokens, dim_emb)
         self.decoder_rnn_dim = dim_hidden
         self.project_to_n_symbols = nn.Linear(self.decoder_rnn_dim, n_tokens)
         self.attention_layer = Attention(
             self.decoder_rnn_dim,
-            hidden_dim,
-            hidden_dim,
-            n_location_filters,
-            location_kernel_size
+            dim_hidden,
+            dim_hidden,
+            n_loc_filters,
+            loc_kernel_size
         )
-        self.decoder_rnn = nn.LSTMCell(self.decoder_rnn_dim + embedding_dim, self.decoder_rnn_dim)
+        self.decoder_rnn = nn.LSTMCell(self.decoder_rnn_dim + dim_emb, self.decoder_rnn_dim)
         self.project_to_hidden = nn.Sequential(
-            nn.Linear(self.decoder_rnn_dim * 2, hidden_dim), nn.Tanh())
-
-    def initialize_decoder_states(self, memory, mask):
-        """
-        moemory.shape = (B, Lm, H)
-        """
-        B, L, H = memory.shape
-        self.decoder_hidden = torch.zeros((B, self.decoder_rnn_dim)).type_as(memory)
-        self.decoder_cell = torch.zeros((B, self.decoder_rnn_dim)).type_as(memory)
-        self.attention_weights = torch.zeros((B, L)).type_as(memory)
-        self.attention_weights_cum = torch.zeros((B, L)).type_as(memory)
-        self.attention_context = torch.zeros((B, H)).type_as(memory)
-        self.memory = memory
-        self.processed_memory = self.attention_layer.memory_layer(memory)
-        self.mask = mask
+            nn.Linear(self.decoder_rnn_dim * 2, dim_hidden), nn.Tanh())
 
     def initialize_decoder_states(self, memory, mask):
         """
@@ -52,10 +39,8 @@ class CumsumAttentionDecoder(nn.Module):
         self.memory = memory
         self.processed_memory = self.attention_layer.memory_layer(memory)
         self.mask = mask
-        self.unk_index = 3
-        self.random_mask = 0.1
 
-    def forward(self, memory, memory_mask, text_input):
+    def forward(self, memory, memory_mask, text_input, use_start_token=False):
         """
         moemory.shape = (B, L, H)
         moemory_mask.shape = (B, L, )
@@ -65,12 +50,16 @@ class CumsumAttentionDecoder(nn.Module):
         # text random mask
         random_mask = (torch.rand(text_input.shape) < self.random_mask).to(text_input.device)
         _text_input = text_input.clone()
-        _text_input.masked_fill_(random_mask, self.unk_index)
+        _text_input.masked_fill_(random_mask, self.unk_token)
         decoder_inputs = self.embedding(_text_input).transpose(0, 1) # -> [T, B, channel]
-        start_embedding = self.embedding(
-            torch.LongTensor([self.sos]*decoder_inputs.size(1)).to(decoder_inputs.device))
-        decoder_inputs = torch.cat((start_embedding.unsqueeze(0), decoder_inputs), dim=0)
+        if use_start_token:
+            start_embedding = self.embedding(
+                torch.LongTensor([self.sos_token]*decoder_inputs.size(1)).to(decoder_inputs.device))
+        else:
+            start_embedding = self.embedding(text_input[:, :1])
+            text_input = text_input[:, 1:]
 
+        decoder_inputs = torch.cat((start_embedding.unsqueeze(0), decoder_inputs), dim=0)
         hidden_outputs, logit_outputs, alignments = [], [], []
         while len(hidden_outputs) < decoder_inputs.size(0):
             decoder_input = decoder_inputs[len(hidden_outputs)]
@@ -80,11 +69,9 @@ class CumsumAttentionDecoder(nn.Module):
             alignments += [attention_weights]
 
         hidden_outputs, logit_outputs, alignments = \
-            self.parse_decoder_outputs(
-                hidden_outputs, logit_outputs, alignments)
+            self.parse_decoder_outputs(hidden_outputs, logit_outputs, alignments)
 
         return hidden_outputs, logit_outputs, alignments
-
 
     def decode(self, decoder_input):
         cell_input = torch.cat((decoder_input, self.attention_context), -1)
@@ -115,7 +102,6 @@ class CumsumAttentionDecoder(nn.Module):
         hidden = torch.stack(hidden).transpose(0, 1).contiguous()
         return hidden, logit, alignments
 
-
 class Attention(nn.Module):
     def __init__(self, attention_rnn_dim, embedding_dim, attention_dim,
                  attention_location_n_filters, attention_location_kernel_size):
@@ -133,6 +119,13 @@ class Attention(nn.Module):
             query,
             processed_memory,
             attention_weights_cat):
+        """
+        query: size=(B, H)
+        processed_memory: size=(B, Lm, H)
+        attention_weights_cat: size=(B, Lm, 2)
+
+
+        """
         processed_query = self.query_layer(query.unsqueeze(1))
         processed_attention_weights = self.location_layer(attention_weights_cat)
         energies = self.v(torch.tanh(
@@ -158,7 +151,6 @@ class Attention(nn.Module):
         attention_context = attention_context.squeeze(1)
         return attention_context, attention_weights
 
-
 class LocationLayer(nn.Module):
     def __init__(self, attention_n_filters, attention_kernel_size, attention_dim):
         super(LocationLayer, self).__init__()
@@ -170,7 +162,13 @@ class LocationLayer(nn.Module):
         self.location_dense = nn.Linear(attention_n_filters, attention_dim, bias=False)
 
     def forward(self, attention_weights_cat):
+        """
+        Args
+        - attention_weights_cat: size=(B, 2, L)
+        """
         processed_attention = self.location_conv(attention_weights_cat)
         processed_attention = processed_attention.transpose(1, 2)
         processed_attention = self.location_dense(processed_attention)
         return processed_attention
+
+

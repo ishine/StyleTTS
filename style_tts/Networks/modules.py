@@ -1,6 +1,7 @@
 import torch
 from torch import nn
-import torch.nn.functionals as F
+import torch.nn.functional as F
+from .submodules.conformer_layers import ConformerEncoder
 
 class TextEncoder(nn.Module):
     def __init__(self, encocer_config={}):
