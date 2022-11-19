@@ -100,17 +100,17 @@ class ConformerEncoder(nn.Module):
         """Calculate forward propagation.
         Args:
             x (Tensor): Input tensor (#batch, L, input_size).
-            mask (Tensor): Input mask (#batch). 0 is masked, 1 is unmasked
+            mask (Tensor): Input mask (#batch, 1, L). 0 is masked, 1 is unmasked
         Returns:
             torch.Tensor: Output tensor (#batch, L, output_size).
             torch.Tensor: Output length (#batch).
-            torch.Tensor: Not to be used now.
         """
         assert (x.size(1) >= 7) or (self.embedding_type != "convsubsampling")
         if isinstance(self.embed, nn.Embedding):
             x = self.embed(x)
         else:
             x, mask = self.embed(x, mask)
+
         x = self.pos_enc(x)
         intermediate_outs = []
         for layer in self.encoders:
@@ -180,7 +180,7 @@ class EncoderLayer(nn.Module):
         # convolution module
         residual = x
         x = self.norm_conv(x)
-        x = residual + self.dropout(self.conv_module(x))
+        x = residual + self.dropout(self.conv_module(x)) * (1 - mask.transpose(1, 2)) # add mask on conv
 
         # feed forward module
         residual = x

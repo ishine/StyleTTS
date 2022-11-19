@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from .submodules.conformer_layers import ConformerEncoder
 
 class TextEncoder(nn.Module):
-    def __init__(self, encocer_config={}):
+    def __init__(self, encoder_config={}):
         super().__init__()
         self.phoneme_encoder = ConformerEncoder(**encoder_config)
 
