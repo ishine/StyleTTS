@@ -56,7 +56,7 @@ class CumAttentionDecoder(nn.Module):
             start_embedding = self.embedding(
                 torch.LongTensor([self.sos_token]*decoder_inputs.size(1)).to(decoder_inputs.device))
         else:
-            start_embedding = self.embedding(text_input[:, :1])
+            start_embedding = self.embedding(text_input[:, 0])
             text_input = text_input[:, 1:]
 
         decoder_inputs = torch.cat((start_embedding.unsqueeze(0), decoder_inputs), dim=0)

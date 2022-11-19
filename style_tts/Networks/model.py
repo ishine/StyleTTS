@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 import torch.nn.functionals as F
+from .modules import TextEncoder, MelDecoder, ASREncoder, PitchEncoder, EnergyEncoder, LabelAdaptor, VectorAdaptor, DurationPredictor, Aligner
 
 class StyleTTS(nn.Module):
     def __init__(self, ):
@@ -32,7 +33,6 @@ class SoftAligedConformerTTS(nn.Module):
         self.spk_adaptor= LabelAdaptor(**spk_encoder_config)
         self.style_adaptor = VectorAdaptor(**style_encoder_config)
         self.duration_predictor = DurationPredictor(**duration_predictor_config)
-        self.aligner = AlignmentModule(**alignment_config)
 
     def forward(
             self,
