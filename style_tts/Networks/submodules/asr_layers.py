@@ -2,6 +2,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 import math
+from .basic_layers import MultiEmbedding
 
 class CumAttentionDecoder(nn.Module):
     def __init__(self, dim_emb=256,  dim_hidden=512, n_loc_filters=32, loc_kernel_size=63,
@@ -12,7 +13,11 @@ class CumAttentionDecoder(nn.Module):
         self.eos_token = 2
         self.unk_token = 3
         self.random_mask = 0.1
-        self.embedding = nn.Embedding(n_tokens, dim_emb)
+        if input_channels == 1:
+            self.embedding = nn.Embedding(n_tokens, dim_emb)
+        else:
+            self.embedding = MultiEmbedding(n_tokens, dim_emb)
+
         self.decoder_rnn_dim = dim_hidden
         self.project_to_n_symbols = nn.Linear(self.decoder_rnn_dim, n_tokens)
         self.attention_layer = Attention(
@@ -140,6 +145,7 @@ class Attention(nn.Module):
             memory,
             processed_memory,
             attention_weights_cat, mask):
+
         alignment = self.get_alignment_energies(
             attention_hidden_state, processed_memory, attention_weights_cat)
 

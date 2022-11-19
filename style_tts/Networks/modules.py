@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
+from .submodules.asr_layers import CumAttentionDecoder
 from .submodules.conformer_layers import ConformerEncoder
 
 class TextEncoder(nn.Module):
@@ -14,25 +15,25 @@ class TextEncoder(nn.Module):
 
 
 class ASRPredictor(nn.Module):
-    def __init__(self, encocer_config={}, decoder_config={}):
+    def __init__(self, encoder_config={}, decoder_config={}):
         super().__init__()
         self.mel_encoder = ConformerEncoder(**encoder_config)
-        self.phoneme_decoder = CumsumAttentionDecoder(**decoder_config)
+        self.phoneme_decoder = CumAttentionDecoder(**decoder_config)
 
     def forward(self, text, text_mask, mel, mel_mask):
         enc, enc_mask = self.mel_encoder(mel, mel_mask)
-        dec = self.phoneme_decoder(text, text_mask, enc, enc_mask)
+        dec = self.phoneme_decoder(enc, enc_mask.squeeze(1), text)
         return enc, dec
 
 
 class MelDecoder(nn.Module):
     def __init__(self, decoder_config={}):
         super().__init__()
-        self.mel_decoder = ConformerDecoder(**decoder_config)
+        self.mel_decoder = ConformerEncoder(**decoder_config)
 
-    def forward(self, enc, enc_mask, spk_id=None, style_vec=None):
-        dec = self.mel_decoder(enc, enc_mask, spk_id, style_vec)
-        return dec
+    def forward(self, x, x_mask):
+        dec, dec_mask = self.mel_decoder(x, x_mask)
+        return dec, dec_mask
 
 
 class PitchEncoder(nn.Module):

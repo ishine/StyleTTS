@@ -37,6 +37,7 @@ class ConformerEncoder(nn.Module):
     def __init__(
             self,
             dim_in: int = 49,
+            dim_out: int = 0,
             dim_hidden: int = 256,
             num_heads: int = 4,
             dim_linear_hidden: int = 2048,
@@ -66,8 +67,11 @@ class ConformerEncoder(nn.Module):
             )
         elif embedding_type == "multilabel":
             self.embed = MultiEmbedding(dim_in, dim_hidden, p_dropout, num_channels=num_channels)
-        else:
+        elif embedding_type == "label":
             self.embed = nn.Embedding(dim_in, dim_hidden)
+        else:
+            self.embed = nn.Identity()
+
 
         positionwise_layer= PositionwiseFeedForward
         positionwise_layer_kwargs = dict(
@@ -92,6 +96,7 @@ class ConformerEncoder(nn.Module):
         self.after_norm = LayerNorm(dim_hidden)
         self.conditioning_layer = None
         self.embedding_type = embedding_type
+        self.last_layer = nn.Linear(dim_hidden, dim_out) if dim_out > 0 else nn.Identity()
 
     def output_size(self) -> int:
         return self._output_size
@@ -106,7 +111,7 @@ class ConformerEncoder(nn.Module):
             torch.Tensor: Output length (#batch).
         """
         assert (x.size(1) >= 7) or (self.embedding_type != "convsubsampling")
-        if isinstance(self.embed, nn.Embedding):
+        if isinstance(self.embed, (nn.Embedding, nn.Identity)):
             x = self.embed(x)
         else:
             x, mask = self.embed(x, mask)
@@ -120,9 +125,11 @@ class ConformerEncoder(nn.Module):
             x = x[0]
 
         x = self.after_norm(x)
+        x = self.last_layer(x)
         if len(intermediate_outs) > 0:
             return (x, intermediate_outs), mask
         return x, mask
+
 
 
 class EncoderLayer(nn.Module):
