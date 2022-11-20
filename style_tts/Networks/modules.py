@@ -112,6 +112,7 @@ class VecoderAdaptor(nn.Module):
         x = self.adaptor(x, vec)
         return x
 
+
 class Aligner(nn.Module):
     def __init__(self):
         super().__init__()
